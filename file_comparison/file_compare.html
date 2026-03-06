@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>文件差异对比器</title>
+	<style>
+		:root {
+			--bg: #f3f7f2;
+			--panel: #ffffff;
+			--ink: #1d2a22;
+			--muted: #5f6f65;
+			--accent: #0e9f6e;
+			--accent-2: #1570ef;
+			--border: #d8e2d8;
+			--same: #ffffff;
+			--add: #e9fff2;
+			--del: #fff0ef;
+			--mod: #fff9e8;
+			--shadow: 0 12px 30px rgba(23, 49, 32, 0.08);
+			--radius: 16px;
+			--font-title: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+			--font-code: "Cascadia Code", "JetBrains Mono", "Consolas", monospace;
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			margin: 0;
+			min-height: 100vh;
+			color: var(--ink);
+			font-family: var(--font-title);
+			background:
+				radial-gradient(1200px 520px at -10% -15%, rgba(21, 112, 239, 0.12), transparent 70%),
+				radial-gradient(1200px 600px at 110% -20%, rgba(14, 159, 110, 0.14), transparent 65%),
+				var(--bg);
+		}
+
+		.wrap {
+			width: min(1280px, 94vw);
+			margin: 24px auto 32px;
+			display: grid;
+			gap: 16px;
+		}
+
+		.hero {
+			background: linear-gradient(135deg, #0f3f2f 0%, #145f49 48%, #124f76 100%);
+			color: #f4fff8;
+			border-radius: var(--radius);
+			padding: 22px 24px;
+			box-shadow: var(--shadow);
+			overflow: hidden;
+			position: relative;
+		}
+
+		.hero::after {
+			content: "";
+			position: absolute;
+			inset: auto -100px -120px auto;
+			width: 320px;
+			height: 320px;
+			border-radius: 50%;
+			background: rgba(255, 255, 255, 0.08);
+			filter: blur(2px);
+		}
+
+		h1 {
+			margin: 0;
+			font-size: clamp(1.3rem, 2.2vw, 2rem);
+			letter-spacing: 0.02em;
+		}
+
+		.hero p {
+			margin: 8px 0 0;
+			color: #daf4e7;
+			line-height: 1.55;
+			max-width: 900px;
+			font-size: 0.96rem;
+		}
+
+		.panel {
+			background: var(--panel);
+			border-radius: var(--radius);
+			box-shadow: var(--shadow);
+			border: 1px solid var(--border);
+			padding: 16px;
+		}
+
+		.controls {
+			display: grid;
+			gap: 14px;
+		}
+
+		.io-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 12px;
+		}
+
+		.io-card {
+			background: #f8fbf8;
+			border: 1px solid var(--border);
+			border-radius: 12px;
+			padding: 12px;
+			display: grid;
+			gap: 8px;
+		}
+
+		.io-card h3 {
+			margin: 0;
+			font-size: 0.98rem;
+			color: #254131;
+		}
+
+		.hint {
+			margin: 0;
+			font-size: 0.84rem;
+			color: var(--muted);
+		}
+
+		.file-meta {
+			font-size: 0.82rem;
+			color: #3e5146;
+			min-height: 1.2em;
+		}
+
+		textarea {
+			width: 100%;
+			min-height: 240px;
+			resize: vertical;
+			border-radius: 10px;
+			border: 1px solid #c9d7cc;
+			padding: 10px 12px;
+			font-family: var(--font-code);
+			line-height: 1.4;
+			font-size: 0.9rem;
+			background: #ffffff;
+			color: #17261d;
+		}
+
+		textarea:focus,
+		input[type="file"]:focus-visible,
+		button:focus-visible {
+			outline: 2px solid var(--accent-2);
+			outline-offset: 2px;
+		}
+
+		.action-bar {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 10px;
+			align-items: center;
+		}
+
+		button {
+			border: 1px solid transparent;
+			border-radius: 999px;
+			padding: 9px 14px;
+			font-weight: 600;
+			cursor: pointer;
+			transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+		}
+
+		button:hover {
+			transform: translateY(-1px);
+		}
+
+		.btn-primary {
+			background: linear-gradient(120deg, var(--accent), #0c8359);
+			color: #f5fff9;
+			box-shadow: 0 8px 16px rgba(14, 159, 110, 0.25);
+		}
+
+		.btn-secondary {
+			background: #f3f7ff;
+			color: #12459e;
+			border-color: #c7d8ff;
+		}
+
+		.btn-ghost {
+			background: #f9fbf7;
+			color: #3d5247;
+			border-color: #d3ded3;
+		}
+
+		.stats {
+			margin-left: auto;
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+			font-size: 0.85rem;
+			color: #264534;
+		}
+
+		.pill {
+			border: 1px solid var(--border);
+			border-radius: 999px;
+			padding: 6px 10px;
+			background: #f9fcf9;
+		}
+
+		.diff-panel {
+			padding: 0;
+			overflow: hidden;
+		}
+
+		.diff-head {
+			display: grid;
+			grid-template-columns: 42px 52px minmax(0, 1fr) 52px minmax(0, 1fr);
+			background: #123528;
+			color: #ecfff6;
+			font-size: 0.84rem;
+			font-weight: 600;
+		}
+
+		.diff-head div {
+			padding: 10px 8px;
+			border-right: 1px solid rgba(255, 255, 255, 0.15);
+		}
+
+		.diff-head div:nth-child(2),
+		.diff-head div:nth-child(4) {
+			font-family: var(--font-code);
+		}
+
+		.diff-table {
+			font-family: var(--font-code);
+			font-size: 0.86rem;
+			line-height: 1.45;
+			max-height: 62vh;
+			overflow: auto;
+			background: #ffffff;
+		}
+
+		.diff-row {
+			display: grid;
+			grid-template-columns: 42px 52px minmax(0, 1fr) 52px minmax(0, 1fr);
+			border-bottom: 1px solid #ecf1ec;
+			animation: rowIn 220ms ease;
+		}
+
+		.diff-row.same {
+			border-left: 4px solid #d7e4d9;
+		}
+
+		.diff-row.add {
+			border-left: 4px solid #1fb068;
+		}
+
+		.diff-row.del {
+			border-left: 4px solid #d24f45;
+		}
+
+		.diff-row.mod {
+			border-left: 4px solid #c79a19;
+		}
+
+		.mark {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			font-weight: 700;
+			font-family: var(--font-code);
+			border-right: 1px solid #edf3ee;
+			user-select: none;
+		}
+
+		@keyframes rowIn {
+			from {
+				opacity: 0;
+				transform: translateY(3px);
+			}
+			to {
+				opacity: 1;
+				transform: translateY(0);
+			}
+		}
+
+		.num,
+		.code {
+			padding: 5px 8px;
+			white-space: pre-wrap;
+			word-break: break-word;
+			border-right: 1px solid #edf3ee;
+		}
+
+		.num {
+			color: #738277;
+			text-align: right;
+			user-select: none;
+			background: #f9fcf9;
+		}
+
+		.same {
+			background: var(--same);
+		}
+
+		.add {
+			background: var(--add);
+		}
+
+		.del {
+			background: var(--del);
+		}
+
+		.mod {
+			background: var(--mod);
+		}
+
+		.char-add {
+			background: rgba(31, 176, 104, 0.24);
+			border-radius: 3px;
+		}
+
+		.char-del {
+			background: rgba(226, 80, 69, 0.22);
+			border-radius: 3px;
+			text-decoration: line-through;
+		}
+
+		.status {
+			color: #325543;
+			font-size: 0.9rem;
+			padding: 0 2px;
+			min-height: 1.4em;
+		}
+
+		.legend {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+			margin-top: 4px;
+		}
+
+		.legend-item {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			border: 1px dashed #c7d7ca;
+			border-radius: 999px;
+			padding: 4px 10px;
+			font-size: 0.82rem;
+			background: #fbfefb;
+			color: #2b4636;
+		}
+
+		.marker-chip {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 18px;
+			height: 18px;
+			border-radius: 50%;
+			font-family: var(--font-code);
+			font-size: 0.78rem;
+			font-weight: 700;
+			border: 1px solid transparent;
+		}
+
+		.marker-chip.same {
+			background: #f5faf5;
+			border-color: #d9e7db;
+			color: #4c6256;
+		}
+
+		.marker-chip.add {
+			background: #ddffe9;
+			border-color: #84d6a8;
+			color: #13653f;
+		}
+
+		.marker-chip.del {
+			background: #ffe1de;
+			border-color: #e39c95;
+			color: #9b332a;
+		}
+
+		.marker-chip.mod {
+			background: #fff2cc;
+			border-color: #dfbf62;
+			color: #825f08;
+		}
+
+		@media (max-width: 980px) {
+			.io-grid {
+				grid-template-columns: 1fr;
+			}
+
+			.stats {
+				margin-left: 0;
+			}
+
+			.diff-head,
+			.diff-row {
+				grid-template-columns: 42px 44px minmax(0, 1fr);
+			}
+
+			.diff-head div:nth-child(4),
+			.diff-head div:nth-child(5),
+			.diff-row .new-num,
+			.diff-row .new-code {
+				display: none;
+			}
+		}
+	</style>
+</head>
+<body>
+	<main class="wrap">
+		<section class="hero">
+			<h1>文件差异对比器</h1>
+			<p>上传或粘贴两份文本内容（例如 Python 代码修改前后），点击“开始对比”即可查看逐行差异，并对修改行进行字符级高亮。</p>
+		</section>
+
+		<section class="panel controls">
+			<div class="io-grid">
+				<article class="io-card">
+					<h3>旧版本 / 修改前</h3>
+					<p class="hint">可上传文件，或直接在文本框内编辑</p>
+					<input id="oldFile" type="file" accept=".txt,.py,.js,.ts,.json,.md,.java,.cpp,.c,.cs,.go,.rs,.xml,.yml,.yaml,.html,.css,*/*">
+					<div id="oldMeta" class="file-meta"></div>
+					<textarea id="oldText" placeholder="在这里粘贴旧版本内容..."></textarea>
+				</article>
+
+				<article class="io-card">
+					<h3>新版本 / 修改后</h3>
+					<p class="hint">支持任意文本格式，包括代码文件</p>
+					<input id="newFile" type="file" accept=".txt,.py,.js,.ts,.json,.md,.java,.cpp,.c,.cs,.go,.rs,.xml,.yml,.yaml,.html,.css,*/*">
+					<div id="newMeta" class="file-meta"></div>
+					<textarea id="newText" placeholder="在这里粘贴新版本内容..."></textarea>
+				</article>
+			</div>
+
+			<div class="action-bar">
+				<button id="compareBtn" class="btn-primary">开始对比</button>
+				<button id="swapBtn" class="btn-secondary">交换左右内容</button>
+				<button id="sampleBtn" class="btn-secondary">加载 Python 示例</button>
+				<button id="exportBtn" class="btn-secondary">导出 HTML 报告</button>
+				<button id="clearBtn" class="btn-ghost">清空</button>
+				<div class="stats" aria-live="polite">
+					<span class="pill" id="sameCount">相同: 0</span>
+					<span class="pill" id="addCount">新增: 0</span>
+					<span class="pill" id="delCount">删除: 0</span>
+					<span class="pill" id="modCount">修改: 0</span>
+				</div>
+			</div>
+
+			<div id="status" class="status">等待对比</div>
+			<div class="legend" aria-label="差异类型图例">
+				<span class="legend-item"><span class="marker-chip same">=</span>相同</span>
+				<span class="legend-item"><span class="marker-chip add">+</span>新增</span>
+				<span class="legend-item"><span class="marker-chip del">-</span>删除</span>
+				<span class="legend-item"><span class="marker-chip mod">~</span>修改</span>
+			</div>
+		</section>
+
+		<section class="panel diff-panel">
+			<div class="diff-head">
+				<div>标</div>
+				<div>#</div>
+				<div>旧版本</div>
+				<div>#</div>
+				<div>新版本</div>
+			</div>
+			<div id="diffOutput" class="diff-table" aria-live="polite"></div>
+		</section>
+	</main>
+
+	<script>
+		const oldFileInput = document.getElementById("oldFile");
+		const newFileInput = document.getElementById("newFile");
+		const oldMeta = document.getElementById("oldMeta");
+		const newMeta = document.getElementById("newMeta");
+		const oldText = document.getElementById("oldText");
+		const newText = document.getElementById("newText");
+		const diffOutput = document.getElementById("diffOutput");
+		const statusEl = document.getElementById("status");
+		const sameCountEl = document.getElementById("sameCount");
+		const addCountEl = document.getElementById("addCount");
+		const delCountEl = document.getElementById("delCount");
+		const modCountEl = document.getElementById("modCount");
+		const exportBtn = document.getElementById("exportBtn");
+
+		document.getElementById("compareBtn").addEventListener("click", compareContents);
+		document.getElementById("swapBtn").addEventListener("click", swapContents);
+		document.getElementById("sampleBtn").addEventListener("click", loadSample);
+		document.getElementById("clearBtn").addEventListener("click", clearAll);
+		exportBtn.addEventListener("click", exportDiffReport);
+		oldFileInput.addEventListener("change", () => readFileToText(oldFileInput, oldText, oldMeta));
+		newFileInput.addEventListener("change", () => readFileToText(newFileInput, newText, newMeta));
+
+		function normalizeText(text) {
+			return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+		}
+
+		async function readFileToText(input, targetTextArea, metaEl) {
+			const file = input.files && input.files[0];
+			if (!file) {
+				return;
+			}
+
+			try {
+				const content = await file.text();
+				targetTextArea.value = normalizeText(content);
+				metaEl.textContent = `${file.name} (${formatBytes(file.size)})`;
+				statusEl.textContent = `已加载文件: ${file.name}`;
+			} catch (error) {
+				metaEl.textContent = "读取失败";
+				statusEl.textContent = `读取文件失败: ${error.message}`;
+			}
+		}
+
+		function formatBytes(bytes) {
+			if (bytes < 1024) {
+				return `${bytes} B`;
+			}
+			if (bytes < 1024 * 1024) {
+				return `${(bytes / 1024).toFixed(1)} KB`;
+			}
+			return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+		}
+
+		function compareContents() {
+			const oldContent = normalizeText(oldText.value);
+			const newContent = normalizeText(newText.value);
+
+			if (!oldContent && !newContent) {
+				statusEl.textContent = "请先上传或输入要对比的内容";
+				diffOutput.innerHTML = "";
+				setCounts({ same: 0, add: 0, del: 0, mod: 0 });
+				return;
+			}
+
+			const oldLines = oldContent.split("\n");
+			const newLines = newContent.split("\n");
+
+			let rows;
+			let fallbackUsed = false;
+
+			try {
+				rows = buildDiffRows(oldLines, newLines);
+			} catch (error) {
+				rows = buildIndexFallbackRows(oldLines, newLines);
+				fallbackUsed = true;
+				console.warn(error);
+			}
+
+			renderDiff(rows);
+			const stats = calculateStats(rows);
+			setCounts(stats);
+
+			statusEl.textContent = fallbackUsed
+				? "已完成对比（大文件模式：按行序对比）"
+				: "已完成对比";
+		}
+
+		function buildDiffRows(oldLines, newLines) {
+			const ops = buildLineOperations(oldLines, newLines);
+			const rows = [];
+			let i = 0;
+
+			while (i < ops.length) {
+				const op = ops[i];
+
+				if (op.type === "equal") {
+					rows.push({ type: "same", oldLine: op.oldLine, newLine: op.newLine });
+					i += 1;
+					continue;
+				}
+
+				if (op.type === "delete" && i + 1 < ops.length && ops[i + 1].type === "insert") {
+					const dels = [];
+					const ins = [];
+					let j = i;
+
+					while (j < ops.length && (ops[j].type === "delete" || ops[j].type === "insert")) {
+						if (ops[j].type === "delete") {
+							dels.push(ops[j]);
+						} else {
+							ins.push(ops[j]);
+						}
+						j += 1;
+					}
+
+					const pairCount = Math.min(dels.length, ins.length);
+					for (let k = 0; k < pairCount; k += 1) {
+						rows.push({ type: "mod", oldLine: dels[k].oldLine, newLine: ins[k].newLine });
+					}
+					for (let k = pairCount; k < dels.length; k += 1) {
+						rows.push({ type: "del", oldLine: dels[k].oldLine, newLine: "" });
+					}
+					for (let k = pairCount; k < ins.length; k += 1) {
+						rows.push({ type: "add", oldLine: "", newLine: ins[k].newLine });
+					}
+
+					i = j;
+					continue;
+				}
+
+				if (op.type === "delete") {
+					rows.push({ type: "del", oldLine: op.oldLine, newLine: "" });
+				} else {
+					rows.push({ type: "add", oldLine: "", newLine: op.newLine });
+				}
+				i += 1;
+			}
+
+			return rows;
+		}
+
+		function buildLineOperations(oldLines, newLines) {
+			const n = oldLines.length;
+			const m = newLines.length;
+			const maxCells = 6_000_000;
+
+			if ((n + 1) * (m + 1) > maxCells) {
+				throw new Error("Matrix too large");
+			}
+
+			const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+
+			for (let i = n - 1; i >= 0; i -= 1) {
+				for (let j = m - 1; j >= 0; j -= 1) {
+					if (oldLines[i] === newLines[j]) {
+						dp[i][j] = dp[i + 1][j + 1] + 1;
+					} else {
+						dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+					}
+				}
+			}
+
+			const ops = [];
+			let i = 0;
+			let j = 0;
+
+			while (i < n && j < m) {
+				if (oldLines[i] === newLines[j]) {
+					ops.push({ type: "equal", oldLine: oldLines[i], newLine: newLines[j] });
+					i += 1;
+					j += 1;
+				} else if (dp[i + 1][j] >= dp[i][j + 1]) {
+					ops.push({ type: "delete", oldLine: oldLines[i], newLine: "" });
+					i += 1;
+				} else {
+					ops.push({ type: "insert", oldLine: "", newLine: newLines[j] });
+					j += 1;
+				}
+			}
+
+			while (i < n) {
+				ops.push({ type: "delete", oldLine: oldLines[i], newLine: "" });
+				i += 1;
+			}
+
+			while (j < m) {
+				ops.push({ type: "insert", oldLine: "", newLine: newLines[j] });
+				j += 1;
+			}
+
+			return ops;
+		}
+
+		function buildIndexFallbackRows(oldLines, newLines) {
+			const rows = [];
+			const max = Math.max(oldLines.length, newLines.length);
+
+			for (let i = 0; i < max; i += 1) {
+				const oldLine = oldLines[i] ?? "";
+				const newLine = newLines[i] ?? "";
+
+				if (oldLine === newLine) {
+					rows.push({ type: "same", oldLine, newLine });
+				} else if (oldLine && !newLine) {
+					rows.push({ type: "del", oldLine, newLine: "" });
+				} else if (!oldLine && newLine) {
+					rows.push({ type: "add", oldLine: "", newLine });
+				} else {
+					rows.push({ type: "mod", oldLine, newLine });
+				}
+			}
+
+			return rows;
+		}
+
+		function renderDiff(rows) {
+			if (!rows.length) {
+				diffOutput.innerHTML = "";
+				return;
+			}
+
+			let oldNum = 1;
+			let newNum = 1;
+			const html = [];
+			const markerMap = {
+				same: "=",
+				add: "+",
+				del: "-",
+				mod: "~"
+			};
+
+			for (const row of rows) {
+				const marker = markerMap[row.type] || "?";
+				let oldNumber = "";
+				let newNumber = "";
+
+				if (row.type !== "add") {
+					oldNumber = String(oldNum);
+					oldNum += 1;
+				}
+				if (row.type !== "del") {
+					newNumber = String(newNum);
+					newNum += 1;
+				}
+
+				const oldCode = row.type === "mod"
+					? diffChars(row.oldLine, row.newLine, "old")
+					: escapeHtml(row.oldLine);
+
+				const newCode = row.type === "mod"
+					? diffChars(row.oldLine, row.newLine, "new")
+					: escapeHtml(row.newLine);
+
+				html.push(`
+					<div class="diff-row ${row.type}">
+						<div class="mark ${row.type}" title="${row.type}">${marker}</div>
+						<div class="num ${row.type}">${oldNumber}</div>
+						<div class="code ${row.type}">${oldCode || " "}</div>
+						<div class="num new-num ${row.type}">${newNumber}</div>
+						<div class="code new-code ${row.type}">${newCode || " "}</div>
+					</div>
+				`);
+			}
+
+			diffOutput.innerHTML = html.join("");
+		}
+
+		function diffChars(oldLine, newLine, side) {
+			if (oldLine === newLine) {
+				return escapeHtml(side === "old" ? oldLine : newLine);
+			}
+
+			const a = [...oldLine];
+			const b = [...newLine];
+			const maxCells = 12_000;
+
+			if ((a.length + 1) * (b.length + 1) > maxCells) {
+				return escapeHtml(side === "old" ? oldLine : newLine);
+			}
+
+			const dp = Array.from({ length: a.length + 1 }, () => new Uint16Array(b.length + 1));
+
+			for (let i = a.length - 1; i >= 0; i -= 1) {
+				for (let j = b.length - 1; j >= 0; j -= 1) {
+					if (a[i] === b[j]) {
+						dp[i][j] = dp[i + 1][j + 1] + 1;
+					} else {
+						dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+					}
+				}
+			}
+
+			let i = 0;
+			let j = 0;
+			const oldOut = [];
+			const newOut = [];
+
+			while (i < a.length && j < b.length) {
+				if (a[i] === b[j]) {
+					const escaped = escapeHtml(a[i]);
+					oldOut.push(escaped);
+					newOut.push(escaped);
+					i += 1;
+					j += 1;
+				} else if (dp[i + 1][j] >= dp[i][j + 1]) {
+					oldOut.push(`<span class="char-del">${escapeHtml(a[i])}</span>`);
+					i += 1;
+				} else {
+					newOut.push(`<span class="char-add">${escapeHtml(b[j])}</span>`);
+					j += 1;
+				}
+			}
+
+			while (i < a.length) {
+				oldOut.push(`<span class="char-del">${escapeHtml(a[i])}</span>`);
+				i += 1;
+			}
+
+			while (j < b.length) {
+				newOut.push(`<span class="char-add">${escapeHtml(b[j])}</span>`);
+				j += 1;
+			}
+
+			return side === "old" ? oldOut.join("") : newOut.join("");
+		}
+
+		function calculateStats(rows) {
+			const stats = { same: 0, add: 0, del: 0, mod: 0 };
+
+			for (const row of rows) {
+				if (row.type === "same") stats.same += 1;
+				if (row.type === "add") stats.add += 1;
+				if (row.type === "del") stats.del += 1;
+				if (row.type === "mod") stats.mod += 1;
+			}
+
+			return stats;
+		}
+
+		function setCounts(stats) {
+			sameCountEl.textContent = `相同: ${stats.same}`;
+			addCountEl.textContent = `新增: ${stats.add}`;
+			delCountEl.textContent = `删除: ${stats.del}`;
+			modCountEl.textContent = `修改: ${stats.mod}`;
+		}
+
+		function swapContents() {
+			const temp = oldText.value;
+			oldText.value = newText.value;
+			newText.value = temp;
+
+			const oldMetaText = oldMeta.textContent;
+			oldMeta.textContent = newMeta.textContent;
+			newMeta.textContent = oldMetaText;
+
+			statusEl.textContent = "已交换左右内容";
+		}
+
+		function clearAll() {
+			oldFileInput.value = "";
+			newFileInput.value = "";
+			oldText.value = "";
+			newText.value = "";
+			oldMeta.textContent = "";
+			newMeta.textContent = "";
+			diffOutput.innerHTML = "";
+			setCounts({ same: 0, add: 0, del: 0, mod: 0 });
+			statusEl.textContent = "已清空，等待对比";
+		}
+
+		function exportDiffReport() {
+			if (!diffOutput.innerHTML.trim()) {
+				compareContents();
+			}
+
+			if (!diffOutput.innerHTML.trim()) {
+				statusEl.textContent = "暂无可导出的对比结果，请先执行对比";
+				return;
+			}
+
+			const oldLabel = oldMeta.textContent.trim() || "旧版本（手动输入）";
+			const newLabel = newMeta.textContent.trim() || "新版本（手动输入）";
+			const exportTime = formatDateTime(new Date());
+
+			const reportHtml = buildExportHtml({
+				oldLabel,
+				newLabel,
+				sameText: sameCountEl.textContent,
+				addText: addCountEl.textContent,
+				delText: delCountEl.textContent,
+				modText: modCountEl.textContent,
+				statusText: statusEl.textContent,
+				exportTime,
+				diffRowsHtml: diffOutput.innerHTML
+			});
+
+			const blob = new Blob([reportHtml], { type: "text/html;charset=utf-8" });
+			const fileName = `diff-report-${buildTimestampForFileName(new Date())}.html`;
+			const url = URL.createObjectURL(blob);
+
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = fileName;
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			URL.revokeObjectURL(url);
+
+			statusEl.textContent = `已导出报告: ${fileName}`;
+		}
+
+		function buildExportHtml(payload) {
+			return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>文件差异对比报告</title>
+	<style>
+		:root {
+			--border: #d8e2d8;
+			--same: #ffffff;
+			--add: #e9fff2;
+			--del: #fff0ef;
+			--mod: #fff9e8;
+		}
+
+		body {
+			margin: 0;
+			padding: 18px;
+			font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+			color: #1d2a22;
+			background: #f5f9f5;
+		}
+
+		.card {
+			background: #fff;
+			border: 1px solid var(--border);
+			border-radius: 12px;
+			padding: 14px;
+			margin-bottom: 14px;
+		}
+
+		h1 {
+			margin: 0 0 8px;
+			font-size: 1.35rem;
+		}
+
+		.meta {
+			display: grid;
+			gap: 6px;
+			font-size: 0.92rem;
+			color: #3c5045;
+		}
+
+		.stats {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			margin-top: 8px;
+		}
+
+		.pill {
+			border: 1px solid var(--border);
+			border-radius: 999px;
+			padding: 4px 10px;
+			font-size: 0.82rem;
+			background: #f9fcf9;
+		}
+
+		.legend {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+			margin-top: 10px;
+		}
+
+		.legend-item {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			border: 1px dashed #c7d7ca;
+			border-radius: 999px;
+			padding: 4px 10px;
+			font-size: 0.82rem;
+			background: #fbfefb;
+			color: #2b4636;
+		}
+
+		.marker-chip {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 18px;
+			height: 18px;
+			border-radius: 50%;
+			font-family: "Cascadia Code", "Consolas", monospace;
+			font-size: 0.78rem;
+			font-weight: 700;
+			border: 1px solid transparent;
+		}
+
+		.marker-chip.same { background: #f5faf5; border-color: #d9e7db; color: #4c6256; }
+		.marker-chip.add { background: #ddffe9; border-color: #84d6a8; color: #13653f; }
+		.marker-chip.del { background: #ffe1de; border-color: #e39c95; color: #9b332a; }
+		.marker-chip.mod { background: #fff2cc; border-color: #dfbf62; color: #825f08; }
+
+		.diff-head {
+			display: grid;
+			grid-template-columns: 42px 52px minmax(0, 1fr) 52px minmax(0, 1fr);
+			background: #123528;
+			color: #ecfff6;
+			font-size: 0.84rem;
+			font-weight: 600;
+			border-radius: 10px 10px 0 0;
+			overflow: hidden;
+		}
+
+		.diff-head div {
+			padding: 10px 8px;
+			border-right: 1px solid rgba(255, 255, 255, 0.15);
+		}
+
+		.diff-table {
+			font-family: "Cascadia Code", "JetBrains Mono", "Consolas", monospace;
+			font-size: 0.86rem;
+			line-height: 1.45;
+			background: #fff;
+			border: 1px solid var(--border);
+			border-top: none;
+			border-radius: 0 0 10px 10px;
+			overflow: hidden;
+		}
+
+		.diff-row {
+			display: grid;
+			grid-template-columns: 42px 52px minmax(0, 1fr) 52px minmax(0, 1fr);
+			border-bottom: 1px solid #ecf1ec;
+		}
+
+		.diff-row.same { border-left: 4px solid #d7e4d9; }
+		.diff-row.add { border-left: 4px solid #1fb068; }
+		.diff-row.del { border-left: 4px solid #d24f45; }
+		.diff-row.mod { border-left: 4px solid #c79a19; }
+
+		.mark {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			font-weight: 700;
+			border-right: 1px solid #edf3ee;
+			user-select: none;
+		}
+
+		.num,
+		.code {
+			padding: 5px 8px;
+			white-space: pre-wrap;
+			word-break: break-word;
+			border-right: 1px solid #edf3ee;
+		}
+
+		.num {
+			color: #738277;
+			text-align: right;
+			user-select: none;
+			background: #f9fcf9;
+		}
+
+		.same { background: var(--same); }
+		.add { background: var(--add); }
+		.del { background: var(--del); }
+		.mod { background: var(--mod); }
+
+		.char-add {
+			background: rgba(31, 176, 104, 0.24);
+			border-radius: 3px;
+		}
+
+		.char-del {
+			background: rgba(226, 80, 69, 0.22);
+			border-radius: 3px;
+			text-decoration: line-through;
+		}
+
+		@media (max-width: 980px) {
+			.diff-head,
+			.diff-row {
+				grid-template-columns: 42px 44px minmax(0, 1fr);
+			}
+
+			.diff-head div:nth-child(4),
+			.diff-head div:nth-child(5),
+			.diff-row .new-num,
+			.diff-row .new-code {
+				display: none;
+			}
+		}
+	</style>
+</head>
+<body>
+	<section class="card">
+		<h1>文件差异对比报告</h1>
+		<div class="meta">
+			<div><strong>旧版本来源:</strong> ${escapeHtml(payload.oldLabel)}</div>
+			<div><strong>新版本来源:</strong> ${escapeHtml(payload.newLabel)}</div>
+			<div><strong>导出时间:</strong> ${escapeHtml(payload.exportTime)}</div>
+			<div><strong>对比状态:</strong> ${escapeHtml(payload.statusText)}</div>
+		</div>
+		<div class="stats">
+			<span class="pill">${escapeHtml(payload.sameText)}</span>
+			<span class="pill">${escapeHtml(payload.addText)}</span>
+			<span class="pill">${escapeHtml(payload.delText)}</span>
+			<span class="pill">${escapeHtml(payload.modText)}</span>
+		</div>
+		<div class="legend" aria-label="差异类型图例">
+			<span class="legend-item"><span class="marker-chip same">=</span>相同</span>
+			<span class="legend-item"><span class="marker-chip add">+</span>新增</span>
+			<span class="legend-item"><span class="marker-chip del">-</span>删除</span>
+			<span class="legend-item"><span class="marker-chip mod">~</span>修改</span>
+		</div>
+	</section>
+	<section class="card">
+		<div class="diff-head">
+			<div>标</div>
+			<div>#</div>
+			<div>旧版本</div>
+			<div>#</div>
+			<div>新版本</div>
+		</div>
+		<div class="diff-table">${payload.diffRowsHtml}</div>
+	</section>
+</body>
+</html>`;
+		}
+
+		function buildTimestampForFileName(date) {
+			const y = date.getFullYear();
+			const m = String(date.getMonth() + 1).padStart(2, "0");
+			const d = String(date.getDate()).padStart(2, "0");
+			const hh = String(date.getHours()).padStart(2, "0");
+			const mm = String(date.getMinutes()).padStart(2, "0");
+			const ss = String(date.getSeconds()).padStart(2, "0");
+			return `${y}${m}${d}-${hh}${mm}${ss}`;
+		}
+
+		function formatDateTime(date) {
+			const y = date.getFullYear();
+			const m = String(date.getMonth() + 1).padStart(2, "0");
+			const d = String(date.getDate()).padStart(2, "0");
+			const hh = String(date.getHours()).padStart(2, "0");
+			const mm = String(date.getMinutes()).padStart(2, "0");
+			const ss = String(date.getSeconds()).padStart(2, "0");
+			return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+		}
+
+		function loadSample() {
+			oldText.value = `def calc_total(items):
+		total = 0
+		for item in items:
+				total += item["price"]
+		return total
+
+def greet(name):
+		print("hello", name)`;
+
+			newText.value = `def calc_total(items, tax_rate=0.0):
+		subtotal = 0
+		for item in items:
+				subtotal += item["price"] * item.get("qty", 1)
+		return round(subtotal * (1 + tax_rate), 2)
+
+def greet(name):
+		print(f"Hello, {name}!")
+
+def log_done():
+		print("done")`;
+
+			statusEl.textContent = "已加载 Python 示例，可直接点“开始对比”";
+		}
+
+		function escapeHtml(text) {
+			return String(text)
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;")
+				.replace(/'/g, "&#39;");
+		}
+	</script>
+</body>
+</html>

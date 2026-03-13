@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexDiff | 高级文件对比工具</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Color Palette - Emerald & Slate */
+            --bg-main: #f8fafc;
+            --surface: rgba(255, 255, 255, 0.85);
+            --header-bg: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
+            --accent: #10b981;
+            --accent-hover: #059669;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+            
+            /* Diff Colors */
+            --diff-add-bg: #ecfdf5;
+            --diff-add-line: #059669;
+            --diff-delete-bg: #fef2f2;
+            --diff-delete-line: #dc2626;
+            --diff-modify-bg: #fffbeb;
+            --diff-modify-line: #d97706;
+            --diff-char-add: rgba(16, 185, 129, 0.25);
+            --diff-char-del: rgba(239, 68, 68, 0.2);
+            
+            --radius-xl: 20px;
+            --radius-lg: 12px;
+            --font-main: 'Inter', system-ui, -apple-system, sans-serif;
+            --font-code: 'JetBrains Mono', 'Consolas', monospace;
+        }
+
+        [data-theme="dark"] {
+            --bg-main: #0f172a;
+            --surface: rgba(30, 41, 59, 0.85);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --diff-add-bg: rgba(6, 78, 59, 0.3);
+            --diff-delete-bg: rgba(127, 29, 29, 0.3);
+            --diff-modify-bg: rgba(120, 53, 15, 0.3);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+            transition: background-color 0.3s ease;
+        }
+
+        /* Glassmorphism utility */
+        .glass {
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+        }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header Styles */
+        header {
+            background: var(--header-bg);
+            padding: 2.5rem 2rem 4rem;
+            margin-bottom: -3rem;
+            border-radius: 0 0 calc(var(--radius-xl) * 2) calc(var(--radius-xl) * 2);
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -10%;
+            width: 50%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, transparent 70%);
+            transform: rotate(-15deg);
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo span {
+            color: var(--accent);
+        }
+
+        /* Controls Section */
+        .controls-card {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+        }
+
+        .input-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .file-input-custom {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.4rem 1rem;
+            background: var(--bg-main);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-input-custom:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        input[type="file"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 1rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: white;
+            font-family: var(--font-code);
+            font-size: 0.9rem;
+            resize: vertical;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+
+        /* Actions Bar */
+        .actions-bar {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: none;
+            font-size: 0.95rem;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.39);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.23);
+        }
+
+        .btn-secondary {
+            background: var(--bg-main);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: #fff;
+            border-color: var(--accent);
+        }
+
+        /* Stats Chips */
+        .stats-container {
+            display: flex;
+            gap: 0.75rem;
+            margin-left: auto;
+        }
+
+        .stat-chip {
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .stat-add { background: #ecfdf5; color: #065f46; border: 1px solid #d1fae5; }
+        .stat-del { background: #fef2f2; color: #991b1b; border: 1px solid #fee2e2; }
+        .stat-mod { background: #fffbeb; color: #92400e; border: 1px solid #fef3c7; }
+
+        /* Diff Display Area */
+        .diff-container {
+            overflow: hidden;
+            margin-top: 2rem;
+        }
+
+        .diff-header {
+            display: grid;
+            grid-template-columns: 50px 1fr 50px 1fr;
+            background: var(--text-primary);
+            color: white;
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 0.75rem 0;
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        }
+
+        .diff-header > div {
+            padding: 0 1rem;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .diff-table {
+            width: 100%;
+            background: white;
+            border-collapse: collapse;
+            font-family: var(--font-code);
+            font-size: 0.9rem;
+            border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+            border: 1px solid var(--border);
+            border-top: none;
+            overflow: hidden;
+        }
+
+        .diff-row {
+            display: grid;
+            grid-template-columns: 50px 1fr 50px 1fr;
+            border-bottom: 1px solid var(--border);
+            min-height: 1.6rem;
+        }
+
+        .diff-row:last-child {
+            border-bottom: none;
+        }
+
+        .line-num {
+            padding: 0 0.5rem;
+            text-align: right;
+            color: var(--text-secondary);
+            background: #f8fafc;
+            user-select: none;
+            font-size: 0.8rem;
+            border-right: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .line-content {
+            padding: 0.2rem 1rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            position: relative;
+        }
+
+        .line-content.left { border-right: 1px solid var(--border); }
+
+        /* Diff Highlighting */
+        .diff-row.added { background-color: var(--diff-add-bg); }
+        .diff-row.added .line-num.right { border-left: 4px solid var(--diff-add-line); }
+        
+        .diff-row.deleted { background-color: var(--diff-delete-bg); }
+        .diff-row.deleted .line-num.left { border-left: 4px solid var(--diff-delete-line); }
+
+        .diff-row.modified { background-color: var(--diff-modify-bg); }
+        .diff-row.modified .line-num { border-left: 4px solid var(--diff-modify-line); }
+
+        .char-add { background-color: var(--diff-char-add); border-radius: 2px; }
+        .char-del { background-color: var(--diff-char-del); border-radius: 2px; text-decoration: line-through; }
+
+        /* Animation */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animated {
+            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .input-grid {
+                grid-template-columns: 1fr;
+            }
+            .diff-header, .diff-row {
+                grid-template-columns: 40px 1fr;
+            }
+            .diff-header > div:nth-child(3), .diff-header > div:nth-child(4),
+            .line-num.right, .line-content.right {
+                display: none;
+            }
+        }
+
+        /* Scrollbar styles */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <h1>Nex<span>Diff</span></h1>
+                <p>高性能文件差异分析引擎 & 炫酷视觉体验</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="toggleTheme()" id="themeBtn">🌙 深色模式</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="controls-card glass animated">
+            <div class="input-grid">
+                <div class="input-group">
+                    <div class="label-row">
+                        <label>原始文本 (LEFT)</label>
+                        <div class="file-input-wrapper">
+                            <span class="file-input-custom">📁 选择文件</span>
+                            <input type="file" onchange="loadFile(event, 'left')">
+                        </div>
+                    </div>
+                    <textarea id="textLeft" placeholder="粘贴原始代码或文本..."></textarea>
+                </div>
+                <div class="input-group">
+                    <div class="label-row">
+                        <label>修改后文本 (RIGHT)</label>
+                        <div class="file-input-wrapper">
+                            <span class="file-input-custom">📁 选择文件</span>
+                            <input type="file" onchange="loadFile(event, 'right')">
+                        </div>
+                    </div>
+                    <textarea id="textRight" placeholder="粘贴修改后的代码或文本..."></textarea>
+                </div>
+            </div>
+
+            <div class="actions-bar">
+                <button class="btn btn-primary" onclick="runDiff()">🚀 执行比对</button>
+                <button class="btn btn-secondary" onclick="loadSample()">💡 加载示例</button>
+                <button class="btn btn-secondary" onclick="swapSides()">🔄 左右对调</button>
+                <button class="btn btn-secondary" onclick="clearAll()">🗑️ 清空</button>
+                
+                <div class="stats-container" id="stats">
+                    <div class="stat-chip stat-add"><span>+</span> <span id="addCount">0</span> 新增</div>
+                    <div class="stat-chip stat-del"><span>-</span> <span id="delCount">0</span> 删除</div>
+                    <div class="stat-chip stat-mod"><span>~</span> <span id="modCount">0</span> 修改</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="diffArea" class="diff-container animated" style="display: none;">
+            <div class="diff-header">
+                <div>#</div>
+                <div>原始文件 (Old)</div>
+                <div>#</div>
+                <div>修改后文件 (New)</div>
+            </div>
+            <div id="diffOutput" class="diff-table">
+                <!-- Rows will be injected here -->
+            </div>
+        </section>
+    </main>
+
+    <script>
+        /**
+         * Myers Diff Algorithm Implementation
+         * O((N+M)D) complexity
+         */
+        class MyersDiff {
+            static diff(oldLines, newLines) {
+                const n = oldLines.length;
+                const m = newLines.length;
+                const max = n + m;
+                const v = { 1: 0 };
+                const trace = [];
+
+                for (let d = 0; d <= max; d++) {
+                    trace.push({ ...v });
+                    for (let k = -d; k <= d; k += 2) {
+                        let x;
+                        if (k === -d || (k !== d && v[k - 1] < v[k + 1])) {
+                            x = v[k + 1];
+                        } else {
+                            x = v[k - 1] + 1;
+                        }
+                        let y = x - k;
+
+                        while (x < n && y < m && oldLines[x] === newLines[y]) {
+                            x++;
+                            y++;
+                        }
+                        v[k] = x;
+
+                        if (x >= n && y >= m) {
+                            return this.backtrack(trace, n, m, oldLines, newLines);
+                        }
+                    }
+                }
+            }
+
+            static backtrack(trace, n, m, oldLines, newLines) {
+                const edits = [];
+                let x = n;
+                let y = m;
+
+                for (let d = trace.length - 1; d >= 0; d--) {
+                    const v = trace[d];
+                    const k = x - y;
+                    const prevK = (k === -d || (k !== d && v[k - 1] < v[k + 1])) ? k + 1 : k - 1;
+                    const prevX = v[prevK];
+                    const prevY = prevX - prevK;
+
+                    while (x > prevX && y > prevY) {
+                        edits.unshift({ type: 'equal', old: oldLines[x - 1], new: newLines[y - 1] });
+                        x--; y--;
+                    }
+
+                    if (d > 0) {
+                        if (x > prevX) {
+                            edits.unshift({ type: 'delete', val: oldLines[x - 1] });
+                            x--;
+                        } else if (y > prevY) {
+                            edits.unshift({ type: 'insert', val: newLines[y - 1] });
+                            y--;
+                        }
+                    }
+                }
+                return edits;
+            }
+        }
+
+        /**
+         * Character level diff using LCS for "Modified" lines
+         */
+        function charDiff(oldStr, newStr) {
+            const dp = Array(oldStr.length + 1).fill(0).map(() => Array(newStr.length + 1).fill(0));
+            for (let i = 1; i <= oldStr.length; i++) {
+                for (let j = 1; j <= newStr.length; j++) {
+                    if (oldStr[i-1] === newStr[j-1]) dp[i][j] = dp[i-1][j-1] + 1;
+                    else dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
+                }
+            }
+
+            let i = oldStr.length, j = newStr.length;
+            let resOld = "", resNew = "";
+            while (i > 0 || j > 0) {
+                if (i > 0 && j > 0 && oldStr[i-1] === newStr[j-1]) {
+                    resOld = escapeHtml(oldStr[i-1]) + resOld;
+                    resNew = escapeHtml(newStr[j-1]) + resNew;
+                    i--; j--;
+                } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+                    resNew = `<span class="char-add">${escapeHtml(newStr[j-1])}</span>` + resNew;
+                    j--;
+                } else {
+                    resOld = `<span class="char-del">${escapeHtml(oldStr[i-1])}</span>` + resOld;
+                    i--;
+                }
+            }
+            return { old: resOld, new: resNew };
+        }
+
+        // --- Core UI Logic ---
+
+        function runDiff() {
+            const left = document.getElementById('textLeft').value.split(/\r?\n/);
+            const right = document.getElementById('textRight').value.split(/\r?\n/);
+            
+            const rawEdits = MyersDiff.diff(left, right);
+            const processedRows = groupEdits(rawEdits);
+            
+            renderDiff(processedRows);
+            updateStats(processedRows);
+            document.getElementById('diffArea').style.display = 'block';
+        }
+
+        function groupEdits(edits) {
+            const rows = [];
+            let i = 0;
+            let lineOld = 1, lineNew = 1;
+
+            while (i < edits.length) {
+                if (edits[i].type === 'equal') {
+                    rows.push({ type: 'equal', old: edits[i].old, new: edits[i].new, l1: lineOld++, l2: lineNew++ });
+                    i++;
+                } else {
+                    // Collect consecutive deletes and inserts to find "modified" pairs
+                    let delItems = [], insItems = [];
+                    while (i < edits.length && edits[i].type !== 'equal') {
+                        if (edits[i].type === 'delete') delItems.push(edits[i].val);
+                        else insItems.push(edits[i].val);
+                        i++;
+                    }
+
+                    const commonCount = Math.min(delItems.length, insItems.length);
+                    for (let j = 0; j < commonCount; j++) {
+                        const { old, new: nw } = charDiff(delItems[j], insItems[j]);
+                        rows.push({ type: 'modified', old, new: nw, l1: lineOld++, l2: lineNew++ });
+                    }
+                    for (let j = commonCount; j < delItems.length; j++) {
+                        rows.push({ type: 'deleted', old: escapeHtml(delItems[j]), new: '', l1: lineOld++, l2: '' });
+                    }
+                    for (let j = commonCount; j < insItems.length; j++) {
+                        rows.push({ type: 'added', old: '', new: escapeHtml(insItems[j]), l1: '', l2: lineNew++ });
+                    }
+                }
+            }
+            return rows;
+        }
+
+        function renderDiff(rows) {
+            const container = document.getElementById('diffOutput');
+            container.innerHTML = rows.map(row => `
+                <div class="diff-row ${row.type}">
+                    <div class="line-num left">${row.l1}</div>
+                    <div class="line-content left">${row.old}</div>
+                    <div class="line-num right">${row.l2}</div>
+                    <div class="line-content right">${row.new}</div>
+                </div>
+            `).join('');
+        }
+
+        function updateStats(rows) {
+            const stats = rows.reduce((acc, row) => {
+                if (row.type === 'added') acc.add++;
+                if (row.type === 'deleted') acc.del++;
+                if (row.type === 'modified') acc.mod++;
+                return acc;
+            }, { add: 0, del: 0, mod: 0 });
+
+            document.getElementById('addCount').textContent = stats.add;
+            document.getElementById('delCount').textContent = stats.del;
+            document.getElementById('modCount').textContent = stats.mod;
+        }
+
+        // --- Helpers ---
+
+        function escapeHtml(text) {
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function loadFile(event, side) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById(side === 'left' ? 'textLeft' : 'textRight').value = e.target.result;
+            };
+            reader.readAsText(file);
+        }
+
+        function toggleTheme() {
+            const body = document.body;
+            const btn = document.getElementById('themeBtn');
+            if (body.getAttribute('data-theme') === 'dark') {
+                body.removeAttribute('data-theme');
+                btn.textContent = '🌙 深色模式';
+            } else {
+                body.setAttribute('data-theme', 'dark');
+                btn.textContent = '☀️ 浅色模式';
+            }
+        }
+
+        function swapSides() {
+            const l = document.getElementById('textLeft');
+            const r = document.getElementById('textRight');
+            const tmp = l.value;
+            l.value = r.value;
+            r.value = tmp;
+            if (document.getElementById('diffArea').style.display !== 'none') runDiff();
+        }
+
+        function clearAll() {
+            document.getElementById('textLeft').value = '';
+            document.getElementById('textRight').value = '';
+            document.getElementById('diffArea').style.display = 'none';
+        }
+
+        function loadSample() {
+            document.getElementById('textLeft').value = `class User:
+    def __init__(self, name):
+        self.name = name
+        self.active = True
+
+    def login(self):
+        print("Logging in " + self.name)
+        return True`;
+            document.getElementById('textRight').value = `class User:
+    def __init__(self, name, email=""):
+        self.name = name
+        self.email = email
+        self.status = "active"
+
+    def login(self):
+        print(f"User {self.name} is logging in...")
+        # New logic
+        return True`;
+            runDiff();
+        }
+    </script>
+</body>
+</html>

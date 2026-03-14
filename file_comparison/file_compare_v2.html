@@ -43,9 +43,16 @@
             --text-primary: #f1f5f9;
             --text-secondary: #94a3b8;
             --border: #334155;
+            --panel-bg: #0f172a;
+            --line-num-bg: #111827;
             --diff-add-bg: rgba(6, 78, 59, 0.3);
             --diff-delete-bg: rgba(127, 29, 29, 0.3);
             --diff-modify-bg: rgba(120, 53, 15, 0.3);
+        }
+
+        :root {
+            --panel-bg: #ffffff;
+            --line-num-bg: #f8fafc;
         }
 
         * {
@@ -192,7 +199,8 @@
             padding: 1rem;
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
-            background: white;
+            background: var(--panel-bg);
+            color: var(--text-primary);
             font-family: var(--font-code);
             font-size: 0.9rem;
             resize: vertical;
@@ -272,7 +280,7 @@
 
         /* Diff Display Area */
         .diff-container {
-            overflow: hidden;
+            overflow-x: auto;
             margin-top: 2rem;
         }
 
@@ -294,7 +302,8 @@
 
         .diff-table {
             width: 100%;
-            background: white;
+            min-width: 720px;
+            background: var(--panel-bg);
             border-collapse: collapse;
             font-family: var(--font-code);
             font-size: 0.9rem;
@@ -319,7 +328,7 @@
             padding: 0 0.5rem;
             text-align: right;
             color: var(--text-secondary);
-            background: #f8fafc;
+            background: var(--line-num-bg);
             user-select: none;
             font-size: 0.8rem;
             border-right: 1px solid var(--border);
@@ -350,6 +359,24 @@
         .char-add { background-color: var(--diff-char-add); border-radius: 2px; }
         .char-del { background-color: var(--diff-char-del); border-radius: 2px; text-decoration: line-through; }
 
+        .status-bar {
+            margin-top: 1rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .empty-state {
+            padding: 2rem 1.25rem;
+            text-align: center;
+            color: var(--text-secondary);
+            font-family: var(--font-main);
+        }
+
+        .line-content.placeholder {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
         /* Animation */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
@@ -365,12 +392,13 @@
             .input-grid {
                 grid-template-columns: 1fr;
             }
-            .diff-header, .diff-row {
-                grid-template-columns: 40px 1fr;
+
+            .container {
+                padding: 1rem;
             }
-            .diff-header > div:nth-child(3), .diff-header > div:nth-child(4),
-            .line-num.right, .line-content.right {
-                display: none;
+
+            .diff-header, .diff-row {
+                min-width: 720px;
             }
         }
 
@@ -441,6 +469,7 @@
                     <div class="stat-chip stat-mod"><span>~</span> <span id="modCount">0</span> 修改</div>
                 </div>
             </div>
+            <div id="statusBar" class="status-bar">等待执行比对</div>
         </section>
 
         <section id="diffArea" class="diff-container animated" style="display: none;">
@@ -470,7 +499,6 @@
                 const trace = [];
 
                 for (let d = 0; d <= max; d++) {
-                    trace.push({ ...v });
                     for (let k = -d; k <= d; k += 2) {
                         let x;
                         if (k === -d || (k !== d && v[k - 1] < v[k + 1])) {
@@ -487,10 +515,14 @@
                         v[k] = x;
 
                         if (x >= n && y >= m) {
+                            trace.push({ ...v });
                             return this.backtrack(trace, n, m, oldLines, newLines);
                         }
                     }
+                    trace.push({ ...v });
                 }
+
+                return [];
             }
 
             static backtrack(trace, n, m, oldLines, newLines) {
@@ -525,46 +557,108 @@
         }
 
         /**
-         * Character level diff using LCS for "Modified" lines
+         * Character level diff with common prefix/suffix trimming and a bounded LCS fallback.
          */
         function charDiff(oldStr, newStr) {
-            const dp = Array(oldStr.length + 1).fill(0).map(() => Array(newStr.length + 1).fill(0));
-            for (let i = 1; i <= oldStr.length; i++) {
-                for (let j = 1; j <= newStr.length; j++) {
-                    if (oldStr[i-1] === newStr[j-1]) dp[i][j] = dp[i-1][j-1] + 1;
-                    else dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
+            if (oldStr === newStr) {
+                return { old: escapeHtml(oldStr), new: escapeHtml(newStr) };
+            }
+
+            let start = 0;
+            let oldEnd = oldStr.length;
+            let newEnd = newStr.length;
+
+            while (start < oldEnd && start < newEnd && oldStr[start] === newStr[start]) {
+                start++;
+            }
+
+            while (oldEnd > start && newEnd > start && oldStr[oldEnd - 1] === newStr[newEnd - 1]) {
+                oldEnd--;
+                newEnd--;
+            }
+
+            const prefixOld = escapeHtml(oldStr.slice(0, start));
+            const prefixNew = escapeHtml(newStr.slice(0, start));
+            const suffixOld = escapeHtml(oldStr.slice(oldEnd));
+            const suffixNew = escapeHtml(newStr.slice(newEnd));
+            const oldMid = oldStr.slice(start, oldEnd);
+            const newMid = newStr.slice(start, newEnd);
+
+            if (!oldMid && !newMid) {
+                return { old: prefixOld + suffixOld, new: prefixNew + suffixNew };
+            }
+
+            if (!oldMid) {
+                return {
+                    old: prefixOld + suffixOld,
+                    new: prefixNew + `<span class="char-add">${escapeHtml(newMid)}</span>` + suffixNew
+                };
+            }
+
+            if (!newMid) {
+                return {
+                    old: prefixOld + `<span class="char-del">${escapeHtml(oldMid)}</span>` + suffixOld,
+                    new: prefixNew + suffixNew
+                };
+            }
+
+            const complexity = oldMid.length * newMid.length;
+            if (complexity > 16000) {
+                return {
+                    old: prefixOld + `<span class="char-del">${escapeHtml(oldMid)}</span>` + suffixOld,
+                    new: prefixNew + `<span class="char-add">${escapeHtml(newMid)}</span>` + suffixNew
+                };
+            }
+
+            const dp = Array.from({ length: oldMid.length + 1 }, () => Array(newMid.length + 1).fill(0));
+            for (let i = 1; i <= oldMid.length; i++) {
+                for (let j = 1; j <= newMid.length; j++) {
+                    if (oldMid[i - 1] === newMid[j - 1]) {
+                        dp[i][j] = dp[i - 1][j - 1] + 1;
+                    } else {
+                        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+                    }
                 }
             }
 
-            let i = oldStr.length, j = newStr.length;
-            let resOld = "", resNew = "";
+            let i = oldMid.length;
+            let j = newMid.length;
+            let resOld = "";
+            let resNew = "";
             while (i > 0 || j > 0) {
-                if (i > 0 && j > 0 && oldStr[i-1] === newStr[j-1]) {
-                    resOld = escapeHtml(oldStr[i-1]) + resOld;
-                    resNew = escapeHtml(newStr[j-1]) + resNew;
-                    i--; j--;
-                } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
-                    resNew = `<span class="char-add">${escapeHtml(newStr[j-1])}</span>` + resNew;
+                if (i > 0 && j > 0 && oldMid[i - 1] === newMid[j - 1]) {
+                    const ch = escapeHtml(oldMid[i - 1]);
+                    resOld = ch + resOld;
+                    resNew = ch + resNew;
+                    i--;
+                    j--;
+                } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+                    resNew = `<span class="char-add">${escapeHtml(newMid[j - 1])}</span>` + resNew;
                     j--;
                 } else {
-                    resOld = `<span class="char-del">${escapeHtml(oldStr[i-1])}</span>` + resOld;
+                    resOld = `<span class="char-del">${escapeHtml(oldMid[i - 1])}</span>` + resOld;
                     i--;
                 }
             }
-            return { old: resOld, new: resNew };
+
+            return {
+                old: prefixOld + resOld + suffixOld,
+                new: prefixNew + resNew + suffixNew
+            };
         }
 
         // --- Core UI Logic ---
 
         function runDiff() {
-            const left = document.getElementById('textLeft').value.split(/\r?\n/);
-            const right = document.getElementById('textRight').value.split(/\r?\n/);
-            
+            const left = getLines(document.getElementById('textLeft').value);
+            const right = getLines(document.getElementById('textRight').value);
+            const start = performance.now();
             const rawEdits = MyersDiff.diff(left, right);
             const processedRows = groupEdits(rawEdits);
-            
+
             renderDiff(processedRows);
             updateStats(processedRows);
+            updateStatus(processedRows, performance.now() - start);
             document.getElementById('diffArea').style.display = 'block';
         }
 
@@ -604,14 +698,26 @@
 
         function renderDiff(rows) {
             const container = document.getElementById('diffOutput');
-            container.innerHTML = rows.map(row => `
-                <div class="diff-row ${row.type}">
-                    <div class="line-num left">${row.l1}</div>
-                    <div class="line-content left">${row.old}</div>
-                    <div class="line-num right">${row.l2}</div>
-                    <div class="line-content right">${row.new}</div>
-                </div>
-            `).join('');
+            if (!rows.length) {
+                container.innerHTML = '<div class="empty-state">两侧内容都为空，没有可显示的差异。</div>';
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+
+            rows.forEach(row => {
+                const rowEl = document.createElement('div');
+                rowEl.className = `diff-row ${row.type}`;
+
+                rowEl.appendChild(createCell('div', 'line-num left', row.l1));
+                rowEl.appendChild(createContentCell(row.old, 'left'));
+                rowEl.appendChild(createCell('div', 'line-num right', row.l2));
+                rowEl.appendChild(createContentCell(row.new, 'right'));
+
+                fragment.appendChild(rowEl);
+            });
+
+            container.replaceChildren(fragment);
         }
 
         function updateStats(rows) {
@@ -634,12 +740,42 @@
             return text.replace(/[&<>"']/g, m => map[m]);
         }
 
+        function getLines(text) {
+            if (text === '') return [];
+            return text.replace(/\r\n/g, '\n').split('\n');
+        }
+
+        function createCell(tag, className, value) {
+            const cell = document.createElement(tag);
+            cell.className = className;
+            cell.textContent = value === '' ? '' : String(value);
+            return cell;
+        }
+
+        function createContentCell(content, side) {
+            const cell = document.createElement('div');
+            const isEmpty = content === '';
+            cell.className = `line-content ${side}${isEmpty ? ' placeholder' : ''}`;
+            cell[isEmpty ? 'textContent' : 'innerHTML'] = isEmpty ? '∅' : content;
+            return cell;
+        }
+
+        function updateStatus(rows, durationMs) {
+            const equalCount = rows.filter(row => row.type === 'equal').length;
+            const diffCount = rows.length - equalCount;
+            const status = rows.length
+                ? `共 ${rows.length} 行结果，其中 ${diffCount} 行存在差异，耗时 ${durationMs.toFixed(1)} ms`
+                : '两侧内容都为空，没有可显示的差异。';
+            document.getElementById('statusBar').textContent = status;
+        }
+
         function loadFile(event, side) {
             const file = event.target.files[0];
             if (!file) return;
             const reader = new FileReader();
             reader.onload = (e) => {
                 document.getElementById(side === 'left' ? 'textLeft' : 'textRight').value = e.target.result;
+                event.target.value = '';
             };
             reader.readAsText(file);
         }
@@ -669,6 +805,11 @@
             document.getElementById('textLeft').value = '';
             document.getElementById('textRight').value = '';
             document.getElementById('diffArea').style.display = 'none';
+            document.getElementById('diffOutput').replaceChildren();
+            document.getElementById('statusBar').textContent = '等待执行比对';
+            document.getElementById('addCount').textContent = '0';
+            document.getElementById('delCount').textContent = '0';
+            document.getElementById('modCount').textContent = '0';
         }
 
         function loadSample() {

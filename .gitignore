@@ -6,3 +6,7 @@
 *.xls
 *.txt
 *.xlsx
+
+.claude/
+
+__pycache__/

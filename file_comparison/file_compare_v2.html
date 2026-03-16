@@ -48,6 +48,35 @@
             --diff-modify-bg: rgba(120, 53, 15, 0.3);
         }
 
+        [data-theme="dark"] textarea {
+            background: #1e293b;
+            color: #f1f5f9;
+            border-color: #475569;
+        }
+
+        [data-theme="dark"] textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+        }
+
+        [data-theme="dark"] .file-input-custom {
+            background: #1e293b;
+            border-color: #475569;
+            color: #cbd5e1;
+        }
+
+        [data-theme="dark"] .file-input-custom:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        [data-theme="dark"] ::-webkit-scrollbar-thumb {
+            background: #475569;
+        }
+        [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -338,6 +367,9 @@
         .line-content.left { border-right: 1px solid var(--border); }
 
         /* Diff Highlighting */
+        .diff-row.equal { background-color: #ffffff; }
+        .diff-row.equal .line-num { border-left: 4px solid #d1fae5; }
+        
         .diff-row.added { background-color: var(--diff-add-bg); }
         .diff-row.added .line-num.right { border-left: 4px solid var(--diff-add-line); }
         
@@ -415,6 +447,7 @@
                             <input type="file" onchange="loadFile(event, 'left')">
                         </div>
                     </div>
+                    <div id="leftFileInfo" class="file-info" style="font-size: 0.8rem; color: var(--text-secondary); min-height: 1.2em; margin-top: -0.5rem;"></div>
                     <textarea id="textLeft" placeholder="粘贴原始代码或文本..."></textarea>
                 </div>
                 <div class="input-group">
@@ -425,6 +458,7 @@
                             <input type="file" onchange="loadFile(event, 'right')">
                         </div>
                     </div>
+                    <div id="rightFileInfo" class="file-info" style="font-size: 0.8rem; color: var(--text-secondary); min-height: 1.2em; margin-top: -0.5rem;"></div>
                     <textarea id="textRight" placeholder="粘贴修改后的代码或文本..."></textarea>
                 </div>
             </div>
@@ -526,8 +560,20 @@
 
         /**
          * Character level diff using LCS for "Modified" lines
+         * Added performance optimization for long lines
          */
         function charDiff(oldStr, newStr) {
+            // Performance optimization: limit character diff length
+            const MAX_CHAR_DIFF_LENGTH = 500;
+            if (oldStr.length > MAX_CHAR_DIFF_LENGTH || newStr.length > MAX_CHAR_DIFF_LENGTH) {
+                // For very long lines, just show the lines without character-level diff
+                return { 
+                    old: escapeHtml(oldStr), 
+                    new: escapeHtml(newStr) 
+                };
+            }
+
+            // LCS algorithm for character-level diff
             const dp = Array(oldStr.length + 1).fill(0).map(() => Array(newStr.length + 1).fill(0));
             for (let i = 1; i <= oldStr.length; i++) {
                 for (let j = 1; j <= newStr.length; j++) {
@@ -630,8 +676,17 @@
         // --- Helpers ---
 
         function escapeHtml(text) {
-            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-            return text.replace(/[&<>"']/g, m => map[m]);
+            if (typeof text !== 'string') return text;
+            const map = {
+                '&': '&',
+                '<': '<',
+                '>': '>',
+                '"': '"',
+                "'": '&#039;',
+                '`': '&#096;',
+                '/': '&#x2F;'
+            };
+            return text.replace(/[&<>"'`/]/g, m => map[m] || m);
         }
 
         function loadFile(event, side) {
@@ -640,8 +695,19 @@
             const reader = new FileReader();
             reader.onload = (e) => {
                 document.getElementById(side === 'left' ? 'textLeft' : 'textRight').value = e.target.result;
+                // 更新文件信息显示
+                const fileInfo = document.getElementById(side === 'left' ? 'leftFileInfo' : 'rightFileInfo');
+                if (fileInfo) {
+                    fileInfo.textContent = `${file.name} (${formatBytes(file.size)})`;
+                }
             };
             reader.readAsText(file);
+        }
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
         }
 
         function toggleTheme() {

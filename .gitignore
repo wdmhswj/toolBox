@@ -10,3 +10,5 @@
 .claude/
 
 __pycache__/
+
+.vscode/
